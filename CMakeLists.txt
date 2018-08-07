@@ -53,6 +53,10 @@ catkin_package(
 catkin_install_python(PROGRAMS src/simpleDetect.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
+
+catkin_install_python(PROGRAMS src/test_cvbridge.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+  
 catkin_install_python(PROGRAMS src/imageLoader.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 

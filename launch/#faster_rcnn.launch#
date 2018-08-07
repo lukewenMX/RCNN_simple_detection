@@ -5,6 +5,6 @@
 
 	<!-- Start the fasterRCNN node, add the cpu arg if the user is in cpu mode -->
 	<node if="$(arg cpu_mode)" name="fasterRCNN" pkg="ros_faster_rcnn" type="simpleDetect.py" args="--cpu"/>
-	<node unless="$(arg cpu_mode)" name="fasterRCNN" pkg="ros_faster_rcnn" type="simpleDetect2.py" />
-	<!--node unless="$(arg cpu_mode)" name="fasterRCNN" pkg="ros_faster_rcnn" type="test_cvbridge.py"/-->
+	<node unless="$(arg cpu_mode)" name="fasterRCNN" pkg="ros_faster_rcnn" type="simpleDetect.py" />
 </launch>
+

@@ -28,11 +28,11 @@ import rospy
 from ros_faster_rcnn.msg import *
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
-#import sys
+import threading
 
-#sys.path.append('/usr/local/lib/python2.7/dist-packages/')
 RUNNING = False
-IMAGE = Image()
+IMAGE1 = Image()
+IMAGE2 = Image()
 	
 def detect(image):
 	"""Detect object classes in an image using pre-computed object proposals."""
@@ -47,15 +47,35 @@ def detect(image):
 	rospy.loginfo('Detection took %f seconds for %d object proposals', timer.total_time, boxes.shape[0])
 	return (scores, boxes)
 			
-def imageCallback(im):
-	global IMAGE
+'''def imageCallbackColor(im):
+	global IMAGE1
 	global RUNNING
-	rospy.loginfo('Image received')
+	#rospy.loginfo('Color Image received')
 	if (RUNNING):
-		rospy.logwarn('Detection already running, message omitted')
+		pass
+		#rospy.logwarn('Color Image Detection already running, message omitted')
 	else:
 		RUNNING = True
-		IMAGE = im
+		mutex.acquire()
+		IMAGE1 = im
+		mutex.release()'''
+def imageCallbackThermal(im):
+	global IMAGE2
+	global RUNNING
+	#rospy.loginfo("Thermal Image received!")
+	if (RUNNING):
+		pass
+		#rospy.logwarn("Thermal Image Detection already running, message omitted")
+	else:
+		RUNNING = True
+		mutex.acquire()
+		IMAGE2 = im
+		mutex.release()
+		rospy.logwarn('IMAGE2 succeed! the header is %s',IMAGE2.header.seq)
+
+		
+		#IMAGE2 = cv2.cvtColor(, cv2.COLOR_BGR2RGB)
+	
 
 def parse_args():
 	"""Parse input arguments."""
@@ -108,6 +128,7 @@ def generateDetections (scores, boxes, classes, threshold):
 			score = dets[i, -1]
 			
 			msg = Detection()
+			msg.header.stamp = rospy.Time.now()
 			msg.x = bbox[0]
 			msg.y = bbox[1]
 			msg.width =  bbox[2] - bbox[0]
@@ -116,30 +137,80 @@ def generateDetections (scores, boxes, classes, threshold):
 			msg.p = score
 			res.append(msg)
 	return res
+
+'''def generateDetectionsThermal (scores, boxes, classes, threshold):
+	# Visualize detections for each class
+	NMS_THRESH = 0.3	
+	res = []
+
+	for cls_ind, cls in enumerate(classes[1:]):
+		cls_ind += 1 # because we skipped background
+		cls_boxes = boxes[:, 4*cls_ind:4*(cls_ind + 1)]
+		cls_scores = scores[:, cls_ind]
+		dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])).astype(np.float32)
+		keep = nms(dets, NMS_THRESH)
+		dets = dets[keep, :]
+
+		inds = np.where(dets[:, -1] >= threshold)[0]
+
+		for i in inds:
+			bbox = dets[i, :4]
+			score = dets[i, -1]
+			
+			msg = Detection()
+			msg.x = bbox[0]
+			msg.y = bbox[1]
+			msg.width =  bbox[2] - bbox[0]
+			msg.height = bbox[3] - bbox[1]
+			msg.object_class = classes[cls_ind]
+			msg.p = score
+			res.append(msg)
+	return res'''
 	
-def getResultImage (detections, image):
+def getResultImageColor (detections, image):
 	font = cv2.FONT_HERSHEY_SIMPLEX
 	textSize = cv2.getTextSize("test", font, 1, 2)
 	delta = (textSize[1] * .3, textSize[1] * 2.4)
 		
 	for det in detections:
-		cv2.rectangle(image, (det.x, det.y), (det.x + det.width, det.y + det.height), (0, 0, 255), 3)
+		cv2.rectangle(image, (det.x, det.y), (det.x + det.width, det.y + det.height), (255, 0, 0), 3)
 		text = "{}: p={:.2f}".format(det.object_class, det.p)
-		cv2.putText(image, text, (int(det.x + delta[0]), int(det.y + delta[1])), font, 1, (0, 0, 255), 2, cv2.LINE_AA)
+		cv2.putText(image, text, (int(det.x + delta[0]), int(det.y + delta[1])), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
 	return image
 	
+
+'''def getResultImageThermal(detections,image):
+	font = cv2.FONT_HERSHEY_SIMPLEX
+	textSize = cv2.getTextSize("test", font, 1, 2)
+	delta = (textSize[1] * .3, textSize[1] * 2.4)
+		
+	for det in detections:
+		cv2.rectangle(image, (det.x, det.y), (det.x + det.width, det.y + det.height), (255, 0, 0), 3)
+		text = "{}: p={:.2f}".format(det.object_class, det.p)
+		cv2.putText(image, text, (int(det.x + delta[0]), int(det.y + delta[1])), font, 1, (255, 0, 0), 2, cv2.LINE_AA)
+	return image'''
+
 if __name__ == '__main__':
 	cfg.TEST.HAS_RPN = True  # Use RPN for proposals
-
+	mutex = threading.Lock()
 	args = parse_args()
-
-	pub_single = rospy.Publisher('rcnn/res/single', Detection, queue_size = 10)
-	pub_array = rospy.Publisher('rcnn/res/array', DetectionArray, queue_size = 2)
-	pub_full = rospy.Publisher('rcnn/res/full', DetectionFull, queue_size = 2)
-	
 	rospy.init_node('simpleDetect')
-	sub_image = rospy.Subscriber("rcnn/image_raw", Image, imageCallback)
-	
+	bridge = CvBridge()
+    # Colored images channels publisher
+	pub_singleColor = rospy.Publisher('rcnn/resColor/single', Detection, queue_size = 10)
+	pub_arrayColor = rospy.Publisher('rcnn/resColor/array', DetectionArray, queue_size = 2)
+	pub_fullColor = rospy.Publisher('rcnn/resColor/full', DetectionFull, queue_size = 2)
+	pub_resultedColor = rospy.Publisher('rcnn/resColor/image',Image,queue_size = 5)
+	#sub_imageColor = rospy.Subscriber("camera/left/image_raw",Image, imageCallbackColor)
+
+	# Thermal images channels publishers
+	pub_singleThermal = rospy.Publisher("rcnn/resThermal/single",Detection,queue_size = 10)
+	pub_arrayThermal = rospy.Publisher('rcnn/resThermal/array', DetectionArray, queue_size = 2)
+	pub_fullThermal = rospy.Publisher('rcnn/resThermal/full', DetectionFull, queue_size = 2)
+	pub_resultedThermal = rospy.Publisher('rcnn/resThermal/image',Image, queue_size = 5)
+	sub_imageThermal = rospy.Subscriber("optris/image_raw", Image, imageCallbackThermal)
+	#sub_imageThermal = rospy.Subscriber("camera/right/image_raw", Image, imageCallbackThermal)
+	#sub_image = rospy.Subscriber("camera/left/image_raw", Image, imageCallback)
 	prototxt = os.path.join(os.path.dirname(__file__), args.prototxt)
 	caffemodel = os.path.join(os.path.dirname(__file__), args.model)
 	classes = parseClasses(os.path.join(os.path.dirname(__file__), args.classes))
@@ -158,39 +229,45 @@ if __name__ == '__main__':
 	rospy.loginfo('Loaded network %s', caffemodel)
 	rospy.loginfo('Running detection with these classes: %s', str(classes))
 	rospy.loginfo('Warmup started')
-	im = 128 * np.ones((300, 500, 3), dtype=np.uint8)
+	'''im = 128 * np.ones((300, 500, 3), dtype=np.uint8)
 	timer = Timer()
 	timer.tic()
 	for i in xrange(2):
 		_, _= im_detect(NET, im)
 	timer.toc()
-	rospy.loginfo('Warmup done in %f seconds. Starting node', timer.total_time)
+	rospy.loginfo('Warmup done in %f seconds. Starting node', timer.total_time)'''
 	
-	rate = rospy.Rate(10)
-	bridge = CvBridge()
+	rate = rospy.Rate(100)
+	
+	#mingxing= CvBridge()
 	while not rospy.is_shutdown():
 		if (RUNNING):
-			rate.sleep()
-			cv_image = bridge.imgmsg_to_cv2(IMAGE)
-			(scores, boxes) = detect(cv_image)
-			detections = generateDetections(scores, boxes, classes, args.treshold)
-			if (pub_single.get_num_connections() > 0):
-				for msg in detections:
-					pub_single.publish(msg)
-					
-			if (pub_array.get_num_connections() > 0 or pub_full.get_num_connections() > 0):
+			mutex.acquire()
+			rospy.logwarn('Image2 succeed! the header is %s',IMAGE2.header.seq)
+			cv_imageThermal = bridge.imgmsg_to_cv2(IMAGE2)
+			mutex.release()
+			(scoresThermal, boxesThermal) = detect(cv_imageThermal)
+			detectionsThermal = generateDetections(scoresThermal, boxesThermal, classes, args.treshold)
+			# Color publishers		
+			#Thermal images info publisher
+			if (pub_singleThermal.get_num_connections() > 0):
+				for msg in detectionsThermal:
+					pub_singleThermal.publish(msg)
+			if (pub_arrayThermal.get_num_connections() > 0 or pub_fullThermal.get_num_connections() > 0):
 				array = DetectionArray()
-				array.size = len(detections)
-				array.data = detections
-				
-				if (pub_full.get_num_connections() > 0):
+				array.size = len(detectionsThermal)
+				array.data = detectionsThermal
+				if (pub_fullThermal.get_num_connections() > 0):
 					msg = DetectionFull()
 					msg.detections = array
-					msg.image =  bridge.cv2_to_imgmsg(getResultImage(detections, bridge.imgmsg_to_cv2(IMAGE)))
-					pub_full.publish(msg)
+					msg.image =  bridge.cv2_to_imgmsg(getResultImageColor(detectionsThermal, cv_imageThermal),encoding="rgb8")
+					pub_resultedThermal.publish(msg.image)
+					pub_fullThermal.publish(msg)
 				else :
-					pub_array.publish(array)
+					pub_arrayThermal.publish(array)
 				
 			RUNNING = False
 		else:
 			rate.sleep()
+			
+		
